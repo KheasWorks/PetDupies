@@ -1,9 +1,9 @@
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local Players = game:GetService("Players")
-local player = Players.LocalPlayer
+local Player = game.Players.LocalPlayer
+local SoundService = game:GetService("SoundService")
 
--- Allowed pet names for duplication
+-- Allowed pets list (for quick lookup)
 local allowedPets = {
     Raccoon = true,
     RedFox = true,
@@ -17,7 +17,7 @@ local allowedPets = {
     Caterpillar = true,
     GiantAnt = true,
     Mole = true,
-    Hedgehog = true
+    Hedgehog = true,
 }
 
 -- Create GUI container
@@ -26,9 +26,20 @@ ScreenGui.Name = "DupePetUI"
 ScreenGui.Parent = game.CoreGui
 ScreenGui.ResetOnSpawn = false
 
--- Helper: make frames draggable on PC and Mobile
+-- Helper: make frames draggable on PC & Mobile, freely anywhere within screen bounds
 local function makeDraggable(frame)
     local dragging, dragInput, dragStart, startPos
+
+    local function update(input)
+        local delta = input.Position - dragStart
+        local newPos = UDim2.new(
+            0,
+            math.clamp(startPos.X.Offset + delta.X, 0, workspace.CurrentCamera.ViewportSize.X - frame.AbsoluteSize.X),
+            0,
+            math.clamp(startPos.Y.Offset + delta.Y, 0, workspace.CurrentCamera.ViewportSize.Y - frame.AbsoluteSize.Y)
+        )
+        frame.Position = newPos
+    end
 
     frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -52,13 +63,7 @@ local function makeDraggable(frame)
 
     UIS.InputChanged:Connect(function(input)
         if dragging and input == dragInput then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(
-                startPos.X.Scale,
-                math.clamp(startPos.X.Offset + delta.X, 0, workspace.CurrentCamera.ViewportSize.X - frame.AbsoluteSize.X),
-                startPos.Y.Scale,
-                math.clamp(startPos.Y.Offset + delta.Y, 0, workspace.CurrentCamera.ViewportSize.Y - frame.AbsoluteSize.Y)
-            )
+            update(input)
         end
     end)
 end
@@ -77,30 +82,18 @@ local function createRainbowGradient(instance)
     gradient.Parent = instance
 end
 
--- Function to get current pet name from player
-local function getCurrentPetName()
-    local petNameValue = player:FindFirstChild("CurrentPetName")
-    if petNameValue and petNameValue:IsA("StringValue") then
-        return petNameValue.Value
-    end
-    return nil
-end
+-- Sounds for key entry
+local SoundCorrect = Instance.new("Sound")
+SoundCorrect.SoundId = "rbxassetid://12222216" -- ding sound
+SoundCorrect.Volume = 0.5
+SoundCorrect.Parent = ScreenGui
 
--- Function to find the pet model instance by name in Pets folder
-local function findPetModel(petName)
-    local petsFolder = player:FindFirstChild("Pets")
-    if not petsFolder then return nil end
+local SoundWrong = Instance.new("Sound")
+SoundWrong.SoundId = "rbxassetid://138087675" -- error buzz sound
+SoundWrong.Volume = 0.5
+SoundWrong.Parent = ScreenGui
 
-    for _, pet in pairs(petsFolder:GetChildren()) do
-        if pet.Name == petName then
-            return pet
-        end
-    end
-
-    return nil
-end
-
--- ===== KEY PAGE UI =====
+-- ===== KEY UI =====
 local KeyFrame = Instance.new("Frame")
 KeyFrame.Size = UDim2.new(0, 300, 0, 150)
 KeyFrame.Position = UDim2.new(0, 300, 0, 200)
@@ -121,23 +114,23 @@ KeyTitle.Parent = KeyFrame
 
 local KeyBox = Instance.new("TextBox")
 KeyBox.Size = UDim2.new(0.8, 0, 0.3, 0)
-KeyBox.Position = UDim2.new(0.1, 0, 0.4, 0)
+KeyBox.Position = UDim2.new(0.1, 0, 0.35, 0)
 KeyBox.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 KeyBox.Text = ""
-KeyBox.PlaceholderText = "Enter the key here..."
 KeyBox.Font = Enum.Font.SourceSans
-KeyBox.TextSize = 22
+KeyBox.TextSize = 20
 KeyBox.ClearTextOnFocus = false
 KeyBox.Parent = KeyFrame
 
 local KeySubmit = Instance.new("TextButton")
-KeySubmit.Size = UDim2.new(0.5, 0, 0.25, 0)
-KeySubmit.Position = UDim2.new(0.25, 0, 0.75, 0)
-KeySubmit.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+KeySubmit.Size = UDim2.new(0.8, 0, 0.25, 0)
+KeySubmit.Position = UDim2.new(0.1, 0, 0.7, 0)
+KeySubmit.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 KeySubmit.Text = "Submit"
 KeySubmit.Font = Enum.Font.SourceSansBold
 KeySubmit.TextSize = 24
 KeySubmit.Parent = KeyFrame
+createRainbowGradient(KeySubmit)
 
 local KeyError = Instance.new("TextLabel")
 KeyError.Size = UDim2.new(1, 0, 0, 25)
@@ -156,7 +149,7 @@ MainFrame.Size = UDim2.new(0, 300, 0, 150)
 MainFrame.Position = UDim2.new(0, 300, 0, 200)
 MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 MainFrame.Active = true
-MainFrame.Visible = false
+MainFrame.Visible = false -- hidden initially
 MainFrame.Parent = ScreenGui
 makeDraggable(MainFrame)
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
@@ -201,23 +194,28 @@ HideButton.Font = Enum.Font.SourceSans
 HideButton.TextSize = 16
 HideButton.Parent = MainFrame
 
--- Mini Window (circle with K)
+-- ===== MINI FLOATING WINDOW =====
 local MiniFrame = Instance.new("Frame")
 MiniFrame.Size = UDim2.new(0, 40, 0, 40)
 MiniFrame.Position = UDim2.new(0, 100, 0, 100)
-MiniFrame.BackgroundColor3 = Color3.new(0, 0, 0) -- black background
+MiniFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- black
 MiniFrame.Visible = false
 MiniFrame.Active = true
 MiniFrame.Parent = ScreenGui
+MiniFrame.ClipsDescendants = true
 makeDraggable(MiniFrame)
-Instance.new("UICorner", MiniFrame).CornerRadius = UDim.new(0, 20) -- circle
+
+-- Circular shape
+local MiniUICorner = Instance.new("UICorner")
+MiniUICorner.CornerRadius = UDim.new(0.5, 0)
+MiniUICorner.Parent = MiniFrame
 
 local MiniLabel = Instance.new("TextLabel")
 MiniLabel.Size = UDim2.new(1, 0, 1, 0)
-MiniLabel.Text = "K"
-MiniLabel.Font = Enum.Font.GothamBlack
-MiniLabel.TextColor3 = Color3.new(1, 1, 1) -- white
 MiniLabel.BackgroundTransparency = 1
+MiniLabel.Text = "K"
+MiniLabel.Font = Enum.Font.GothamBlack -- closest to gothic, since "Gothic" font doesn't exist
+MiniLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 MiniLabel.TextScaled = true
 MiniLabel.Parent = MiniFrame
 
@@ -227,6 +225,33 @@ MiniClickZone.BackgroundTransparency = 1
 MiniClickZone.Text = ""
 MiniClickZone.Parent = MiniFrame
 
+-- ===== Helper functions =====
+local function getCurrentPetName()
+    local val = Player:FindFirstChild("CurrentPetName")
+    if val and val:IsA("StringValue") then
+        return val.Value
+    end
+    return nil
+end
+
+local function findPetModel(petName)
+    local petsFolder = Player:FindFirstChild("Pets")
+    if petsFolder then
+        return petsFolder:FindFirstChild(petName)
+    end
+    return nil
+end
+
+local function playButtonTween(button)
+    local tweenOut = TweenService:Create(button, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0.8, 0, 0.25, 0)})
+    local tweenIn = TweenService:Create(button, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0.8, 0, 0.3, 0)})
+
+    tweenOut:Play()
+    tweenOut.Completed:Connect(function()
+        tweenIn:Play()
+    end)
+end
+
 -- ===== LOGIC =====
 
 -- Key submission
@@ -235,9 +260,11 @@ KeySubmit.MouseButton1Click:Connect(function()
     if enteredKey == "ILOVEISLY" then
         KeyFrame.Visible = false
         MainFrame.Visible = true
+        SoundCorrect:Play()
     else
         KeyError.Text = "Incorrect Key! Try again."
         KeyError.Visible = true
+        SoundWrong:Play()
         task.delay(2, function()
             KeyError.Visible = false
         end)
@@ -262,21 +289,17 @@ Button.MouseButton1Click:Connect(function()
         local petModel = findPetModel(currentPet)
         if petModel then
             local clonedPet = petModel:Clone()
-            -- If pet has 'Equipped' BoolValue, set clone to false (unequipped)
             local equippedVal = clonedPet:FindFirstChild("Equipped")
             if equippedVal and equippedVal:IsA("BoolValue") then
                 equippedVal.Value = false
             end
-            clonedPet.Parent = player:FindFirstChild("Pets") or player
+            clonedPet.Parent = Player:FindFirstChild("Pets") or Player
             Prompt.Visible = true
             task.delay(2, function()
                 Prompt.Visible = false
             end)
 
-            -- Button click tween animation
-            Button:TweenSize(UDim2.new(0.8, 0, 0.25, 0), "Out", "Quad", 0.1, true, function()
-                Button:TweenSize(UDim2.new(0.8, 0, 0.3, 0), "Out", "Quad", 0.1, true)
-            end)
+            playButtonTween(Button)
         else
             warn("Pet model not found for duplication.")
         end
