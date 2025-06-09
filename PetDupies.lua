@@ -257,7 +257,7 @@ end
 -- Key submission
 KeySubmit.MouseButton1Click:Connect(function()
     local enteredKey = KeyBox.Text
-    if enteredKey == "ILOVEISLY" then
+    if enteredKey == "KHEASTERHUB" then
         KeyFrame.Visible = false
         MainFrame.Visible = true
         SoundCorrect:Play()
